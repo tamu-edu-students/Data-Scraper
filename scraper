@@ -1,0 +1,155 @@
+from bs4 import BeautifulSoup#scraping html 
+import requests#interact with internet to download picture
+import shutil#allows us to save picture
+import csv#lets us create a csv file
+import time#for delay when scraping photos as website does not want spamming when downloading photos
+
+def price_conversion(price):#convert all of the following prices to USD
+    if price.find("ZAR") >= 0:
+        price = price.replace("ZAR", "")
+        price = float(price)
+        price = price * 0.054
+        price = round(price, 2)
+        return price
+    elif price.find("DKK") >= 0:
+        price = price.replace("DKK", "")
+        price = float(price)
+        price = price * 0.14
+        price = round(price, 2)
+        return price
+    elif price.find("£")>= 0:
+        price = price.replace("£", "")
+        price = float(price)
+        price = price * 1.08
+        price = round(price, 2)
+        return price
+    elif price.find("$")>= 0:
+        price = price.replace("$", "")
+        price = float(price)
+        price = round(price, 2)
+        return price
+    elif price.find("€")>= 0:
+        price = price.replace("€", "")
+        price = float(price)
+        price = round(price, 2)
+        return price
+    else:
+        if(price == ""):#low estimation sometimes replaced by empty string if DNE
+            print("No low estimation")
+        else:#case where monitary type not accounted for and caught
+            print("ERROR: price not converted to USD")
+        return 0
+
+with open("scrape23.html", "r", encoding="utf8") as file:#open downloaded html file
+    doc = BeautifulSoup(file, "html.parser")#able to use doc later
+
+
+id_current = 4277
+artists = doc.find_all(class_="artist-name")#find all artists name in html file
+estimates_label = doc.find_all(class_="item-result-label")#label that tells us if estimate or hammer price
+estimates_price = doc.find_all(class_="price")#price of estimate or hammer price
+dimentions = doc.find_all(class_="dimension")#gets dimentions of each art piece
+mediums = doc.find_all(class_="medium")#gets the medium used
+
+with open("data.csv", "w", newline="") as datafile:#open a csv file to write to
+    w = csv.writer(datafile)#set w equal to write
+    w.writerow(["ID", "Artist", "Low Estimation Price", "High Estimation Price", "Hammer Price", "Size", "Medium"])#write the label row
+
+    price_counter = 0#counter used for finding estimate or hammer price
+    label_counter = 0#counter used for finding estimate or hammer price
+
+    for i in range(0, len(artists)):#loop will do until out of art pieces
+        temp_dimentions = dimentions[i].string#save dimentions as string to variable
+        dimentions_clean = ""#will be used to store the cleaned data from dimentions as formatting is strange for it
+        for j in range(0, len(temp_dimentions)):#loop for string size of dimentions
+            if temp_dimentions[j] != "\n":#remove new line in dimentions
+                dimentions_clean += temp_dimentions[j]#if not a new line, save the info to string
+        dimentions_clean = dimentions_clean.replace(" ", "")#replace all spaces in dimentions
+        price_counter += 1#increase validation counter
+        label_counter += 1#increase validation counter
+        high_estimation = ""
+        low_estimation = ""
+        corrected_estimate = (estimates_price[price_counter-1].string)#save estimate to string
+        corrected_estimate = corrected_estimate.replace('"', "")#formatting had quotes and had to be removed
+        dash_location = corrected_estimate.find("-")
+        for j in range(dash_location, len(corrected_estimate)):
+            high_estimation += corrected_estimate[j]
+        for j in range(0, dash_location):
+            low_estimation += corrected_estimate[j]
+
+        high_estimation = high_estimation.replace('-', '')#clean up estimation prices
+        high_estimation =  high_estimation.replace(" ", "")
+        high_estimation = high_estimation.replace(",", "")
+        low_estimation = low_estimation.replace(" ", "")
+        low_estimation = low_estimation.replace(",", "")
+
+        low_estimation = price_conversion(low_estimation)#convert to USD
+        high_estimation = price_conversion(high_estimation)
+
+        artist_name = artists[i].string
+        medium_used = mediums[i].string
+        if(artist_name == ""):#case where artist is unknown
+            artist_name = "Unknown"
+        if(medium_used == ""):#case where medium is unknown
+            medium_used = "N/A"
+        
+        
+
+        if price_counter < len(estimates_label): #edge case handling when last listing isnt sold
+
+            hammer = estimates_price[price_counter].string#hammer price formatting
+            hammer = hammer.replace(",", "")
+            hammer = hammer.replace(" ", "")
+      
+            if(estimates_label[label_counter].string == "Estimated price:"):#if there are two estimate prices in a row, we know that the current piece of art did not sell
+                if(low_estimation == 0):
+                    hammer = high_estimation
+                else:
+                    hammer = (low_estimation + high_estimation)/2.0
+                hammer = round(hammer, 2)
+                w.writerow([i+id_current, artist_name, low_estimation, high_estimation, hammer, dimentions_clean, medium_used])#not sold case for writing to csv
+            else:#if the piece did sell
+                hammer = price_conversion(hammer)
+                w.writerow([i+id_current, artist_name, low_estimation, high_estimation, hammer, dimentions_clean, medium_used])#write to csv for hammer price case
+                price_counter += 1#increase validation counter
+                label_counter += 1#increase validation counter
+        else:#edge case where last piece of data has no hammer price
+            if(low_estimation == 0):
+                hammer = high_estimation
+            else:
+                hammer = (low_estimation + high_estimation)/2.0
+            hammer = round(hammer, 2)
+            w.writerow([i+id_current, artist_name, low_estimation, high_estimation, hammer, dimentions_clean, medium_used])
+
+
+image_urls = doc.find_all(class_="img-thumbnail img-fluid")#find image url
+for j in range(0, len(artists)): 
+    url = str(image_urls[j])
+    url_location = url.find('data-src=')#cant get link directly, therefor the following seperates it to use
+    new_url = ""
+    for i in range(len(url)):
+        if i > url_location + 9:
+            new_url += url[i]
+    url = ""
+    new_url_location = new_url.find('"')
+    for i in range(new_url_location):
+        url += new_url[i]
+
+    new_url = ""
+    url_location = url.find("thumbnails/")
+    for i in range(len(url)):
+        if ((i < url_location) or (i > url_location + 10)):
+            new_url += url[i]
+    picture_name = j + id_current
+    print(new_url)
+    if(new_url != "t_available.jpg"):#esure picture is available to download
+        r = requests.get(new_url, stream = True)
+        r.raw.decode_content = True
+        with open(str(picture_name) + ".JPEG", 'wb') as f:
+            shutil.copyfileobj(r.raw, f)
+        print(j+id_current)
+    else:
+        print(j+id_current, " .... NO PICTURE ASSOCIATED")#throw message saying picture not avaiable
+    time.sleep(8)#manual delay required as terms and conditions says no "spamming"
+
+
