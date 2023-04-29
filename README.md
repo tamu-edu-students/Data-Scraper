@@ -13,7 +13,7 @@ The user must edit two lines in order to properly use the program:
   Line 43: user must change name from "scrape23.html" to the name of the file they saved from copying and pasting
   Line 47: set current ID to the next ID wanted in data acquisition
  
-The delay at the end is set to 8 seconds per picture due to website policy of "no spamming"
+The delay at the end is set to 8 seconds per picture due to website policy of "no spamming". Do not edit this value.
   
 rename.py:
 
